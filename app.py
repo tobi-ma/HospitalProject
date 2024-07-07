@@ -1,8 +1,12 @@
 import streamlit as st
 import cleaned_code as c
+from streamlit_extras.app_logo import add_logo
 
+# Logo Awesome Inc.
+st.image('img/Awesome_Inc (1).png', width=300)
 # Titel der App
 st.title("Hospital Data Improvement Recommendations")
+# add_logo('img/Awesome_Inc.png')
 
 # Auswahl eines Krankenhauses
 hospital_id = st.selectbox("Select Hospital ID", c.not_yet_rated['Provider ID'].unique())

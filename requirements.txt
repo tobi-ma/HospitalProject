@@ -1,0 +1,16 @@
+altair
+deap
+joblib
+lightgbm
+matplotlib
+numpy
+pandas
+scikeras
+seaborn
+shap
+scikit-learn
+tensorflow
+tqdm
+xgboost
+streamlit
+streamlit_extras
