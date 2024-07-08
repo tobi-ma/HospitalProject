@@ -159,25 +159,27 @@ def load_data(data_path='not_yet_rated.csv'):
 
 
 # %%
-# Generierung von Empfehlungen
-# Generierung von Empfehlungen
-def generate_recommendations(hospital_id, not_yet_rated, feature_importances, hospital_info, top_n=5):
+def generate_recommendations(hospital_id, hospital_info, feature_importances, desired_rating, top_n=5):
     # Get the top N important features
     top_features = feature_importances.head(top_n)['Feature'].values
 
     # Get the data for the specific hospital
-    hospital_data = not_yet_rated[not_yet_rated['Provider ID'] == hospital_id]
+    hospital_data = hospital_info[hospital_info['Provider ID'] == hospital_id]
+
+    # Debugging: print the shape and content of the hospital_data
+    print(f"Hospital data shape for ID {hospital_id}: {hospital_data.shape}")
+    print(hospital_data)
 
     if hospital_data.empty:
         print(f"No data found for hospital ID {hospital_id}")
-        return {}  # Keine Empfehlungen möglich, wenn keine Daten gefunden wurden
+        return {}  # No recommendations possible if no data found
 
     # Compare with hospitals having higher ratings
-    higher_rated_hospitals = hospital_info[hospital_info['Hospital overall rating'] >= 4]
+    higher_rated_hospitals = hospital_info[hospital_info['Hospital overall rating'] >= desired_rating]
 
     if higher_rated_hospitals.empty:
         print("No higher rated hospitals found")
-        return {}  # Keine Empfehlungen möglich, wenn keine höher bewerteten Krankenhäuser gefunden wurden
+        return {}  # No recommendations possible if no higher rated hospitals found
 
     recommendations = {}
 
