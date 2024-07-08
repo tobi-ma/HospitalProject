@@ -93,6 +93,72 @@ svm_features = [
     'MED_OP_9_Score'
 ]
 
+# Feature dictionary 
+
+# Define a mapping dictionary for feature names
+feature_name_mapping = {
+    'MORT_30_AMI_Score': '30-day mortality rate for Acute Myocardial Infarction (heart attack)',
+    'MORT_30_CABG_Score': '30-day mortality rate for Coronary Artery Bypass Graft surgery',
+    'MORT_30_COPD_Score': '30-day mortality rate for Chronic Obstructive Pulmonary Disease',
+    'MORT_30_HF_Score': '30-day mortality rate for Heart Failure',
+    'MORT_30_PN_Score': '30-day mortality rate for Pneumonia',
+    'MORT_30_STK_Score': '30-day mortality rate for Stroke',
+    'READM_30_AMI_Score': '30-day readmission rate for Acute Myocardial Infarction',
+    'READM_30_CABG_Score': '30-day readmission rate for Coronary Artery Bypass Graft surgery',
+    'READM_30_COPD_Score': '30-day readmission rate for Chronic Obstructive Pulmonary Disease',
+    'READM_30_HF_Score': '30-day readmission rate for Heart Failure',
+    'READM_30_HIP_KNEE_Score': '30-day readmission rate for Hip/Knee replacement',
+    'READM_30_HOSP_WIDE_Score': '30-day readmission rate hospital-wide',
+    'READM_30_PN_Score': '30-day readmission rate for Pneumonia',
+    'READM_30_STK_Score': '30-day readmission rate for Stroke',
+    'EFF_EDV_Score': 'Efficiency of emergency department volume',
+    'EFF_IMM_2_Score': 'Immunization measure',
+    'EFF_OP_20_Score': 'Outpatient measure for a specific procedure',
+    'EFF_OP_22_Score': 'Outpatient measure for a specific procedure',
+    'EFF_OP_4_Score': 'Outpatient measure for a specific procedure',
+    'EFF_PC_01_Score': 'Perinatal care measure',
+    'EFF_STK_1_Score': 'Stroke care measure',
+    'EFF_STK_2_Score': 'Stroke care measure',
+    'EFF_STK_4_Score': 'Stroke care measure',
+    'EFF_STK_5_Score': 'Stroke care measure',
+    'EFF_STK_6_Score': 'Stroke care measure',
+    'EFF_VTE_1_Score': 'Venous thromboembolism care measure',
+    'EFF_VTE_2_Score': 'Venous thromboembolism care measure',
+    'EFF_VTE_6_Score': 'Venous thromboembolism care measure',
+    'EXP_H_CLEAN_STAR_RATING_Score': 'Star rating for hospital cleanliness',
+    'EXP_H_COMP_1_STAR_RATING_Score': 'Star rating for hospital communications with patients (part 1)',
+    'EXP_H_COMP_2_STAR_RATING_Score': 'Star rating for hospital communications with patients (part 2)',
+    'EXP_H_COMP_3_STAR_RATING_Score': 'Star rating for hospital communications with patients (part 3)',
+    'EXP_H_COMP_4_STAR_RATING_Score': 'Star rating for hospital communications with patients (part 4)',
+    'EXP_H_COMP_5_STAR_RATING_Score': 'Star rating for hospital communications with patients (part 5)',
+    'EXP_H_COMP_6_STAR_RATING_Score': 'Star rating for hospital communications with patients (part 6)',
+    'EXP_H_COMP_7_STAR_RATING_Score': 'Star rating for hospital communications with patients (part 7)',
+    'EXP_H_HSP_RATING_STAR_RATING_Score': 'Overall hospital star rating from patients',
+    'EXP_H_QUIET_STAR_RATING_Score': 'Star rating for hospital quietness',
+    'EXP_H_RECMND_STAR_RATING_Score': 'Star rating for patients’ willingness to recommend the hospital',
+    'EXP_H_STAR_RATING_Score': 'Overall star rating for the hospital',
+    'SAFETY_PSI_12_POSTOP_PULMEMB_DVT_Score': 'Postoperative pulmonary embolism or deep vein thrombosis rate',
+    'SAFETY_PSI_13_POST_SEPSIS_Score': 'Postoperative sepsis rate',
+    'SAFETY_PSI_14_POSTOP_DEHIS_Score': 'Postoperative wound dehiscence rate',
+    'SAFETY_PSI_15_ACC_LAC_Score': 'Accidental puncture or laceration rate',
+    'SAFETY_PSI_3_ULCER_Score': 'Pressure ulcer rate',
+    'SAFETY_PSI_6_IAT_PTX_Score': 'Iatrogenic pneumothorax rate',
+    'SAFETY_PSI_7_CVCBI_Score': 'Central venous catheter-related bloodstream infection rate',
+    'SAFETY_PSI_90_SAFETY_Score': 'Composite patient safety indicator score',
+    'SAFETY_HAI_1_SIR_Score': 'Standardized infection ratio for central line-associated bloodstream infections',
+    'SAFETY_HAI_1a_SIR_Score': 'Additional standardized infection ratio for central line-associated bloodstream infections',
+    'SAFETY_HAI_2_SIR_Score': 'Standardized infection ratio for catheter-associated urinary tract infections',
+    'SAFETY_HAI_2a_SIR_Score': 'Additional standardized infection ratio for catheter-associated urinary tract infections',
+    'SAFETY_HAI_3_SIR_Score': 'Standardized infection ratio for surgical site infections (colon surgery)',
+    'SAFETY_HAI_4_SIR_Score': 'Standardized infection ratio for surgical site infections (abdominal hysterectomy)',
+    'SAFETY_HAI_6_SIR_Score': 'Standardized infection ratio for hospital-onset Clostridium difficile infections',
+    'MED_OP_10_Score': 'Medical operational score for a specific procedure (part 10)',
+    'MED_OP_11_Score': 'Medical operational score for a specific procedure (part 11)',
+    'MED_OP_13_Score': 'Medical operational score for a specific procedure (part 13)',
+    'MED_OP_14_Score': 'Medical operational score for a specific procedure (part 14)',
+    'MED_OP_8_Score': 'Medical operational score for a specific procedure (part 8)',
+    'MED_OP_9_Score': 'Medical operational score for a specific procedure (part 9)'
+}
 # %%
 X_train_selected = X_train[svm_features]
 X_test_selected = X_test[svm_features]
@@ -166,10 +232,6 @@ def generate_recommendations(hospital_id, hospital_info, feature_importances, de
     # Get the data for the specific hospital
     hospital_data = hospital_info[hospital_info['Provider ID'] == hospital_id]
 
-    # Debugging: print the shape and content of the hospital_data
-    print(f"Hospital data shape for ID {hospital_id}: {hospital_data.shape}")
-    print(hospital_data)
-
     if hospital_data.empty:
         print(f"No data found for hospital ID {hospital_id}")
         return {}  # No recommendations possible if no data found
@@ -196,7 +258,7 @@ def generate_recommendations(hospital_id, hospital_info, feature_importances, de
 
         # Generate recommendation if the current value is lower than the mean value
         if current_value < mean_value:
-            recommendations[feature] = {
+            recommendations[feature_name_mapping.get(feature, feature)] = {
                 'current_value': current_value,
                 'recommended_value': mean_value,
                 'difference': mean_value - current_value
