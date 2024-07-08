@@ -149,7 +149,7 @@ def save_version_history(version_history, file_path='data_versions.csv'):
 
 
 @st.cache_resource
-def load_model(model_path='best_model.pkl'):
+def load_model(model_path='ml_model.pkl'):
     return joblib.load(model_path)
 
 
