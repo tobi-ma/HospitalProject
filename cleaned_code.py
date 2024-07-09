@@ -242,9 +242,6 @@ def load_data(data_path='not_yet_rated.csv'):
 # %%
 # Generating recommendations
 def generate_recommendations(hospital_id, hospital_info, feature_importances, desired_rating, top_n=5):
-    print(hospital_info.columns)
-    print(hospital_info.head())
-
     # Get the top N important features
     top_features = feature_importances.head(top_n)['Feature'].values
 
@@ -297,9 +294,9 @@ def apply_recommendations(hospital_id, not_yet_rated, recommendations):
 
 # %%
 # Hauptfunktion zur Verarbeitung der Krankenhausdaten und Speicherung der neuen Version
-def process_hospital_data(hospital_id, hospital_info, feature_importances, pipeline, version_history, desired_rating):
-    recommendations = generate_recommendations(hospital_id, hospital_info, feature_importances, desired_rating)
-    modified_data = apply_recommendations(hospital_id, hospital_info, recommendations)
+def process_hospital_data(hospital_id, not_yet_rated, feature_importances, pipeline, version_history, desired_rating):
+    recommendations = generate_recommendations(hospital_id, not_yet_rated, feature_importances, desired_rating)
+    modified_data = apply_recommendations(hospital_id, not_yet_rated, recommendations)
 
     new_version = version_history['Version'].max() + 1 if not version_history.empty else 1
     current_date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')

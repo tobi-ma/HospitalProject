@@ -1,7 +1,8 @@
 import streamlit as st
+from langchain.chains.conversational_retrieval.base import ConversationalRetrievalChain
+
 import cleaned_code as c
 from streamlit_extras.app_logo import add_logo
-from langchain.chains.conversational_retrieval.base import ConversationalRetrievalChain
 
 # Logo Awesome Inc.
 st.image('img/Awesome_Inc (1).png', width=300)
@@ -10,8 +11,7 @@ st.image('img/Awesome_Inc (1).png', width=300)
 st.title("Hospital Recommendations")
 
 # Load necessary data
-hospital_info = c.hospital_info.copy()
-print(hospital_info.columns)
+hospital_info = c.hospital_info
 
 # State selection
 states = hospital_info['State'].unique()
@@ -45,11 +45,7 @@ hospital_data_view = hospital_info[hospital_info['Provider ID'] == selected_hosp
     'Patient experience national comparison', 'Effectiveness of care national comparison',
     'Timeliness of care national comparison', 'Efficient use of medical imaging national comparison'
 ]]
-st.dataframe(hospital_data_view.style.set_properties(**{
-    'background-color': 'white',
-    'color': 'black',
-    'border-color': 'black'
-}))
+st.write(hospital_data_view)
 
 # Ensure hospital_data contains the necessary features for prediction
 hospital_data = hospital_info[hospital_info['Provider ID'] == selected_hospital_id]
@@ -61,7 +57,7 @@ if missing_features:
 else:
     # Compute the current prediction for the selected hospital
     current_prediction = c.model.predict(hospital_data[c.svm_features])[0]
-    st.metric(label=f"Current predicted rating for Hospital ID {selected_hospital_id}", value=current_prediction)
+    st.write(f"Current predicted rating for Hospital ID {selected_hospital_id}: {current_prediction}")
 
     # Desired rating selection
     desired_rating = st.slider('Select Desired Rating', 1, 5, 4)
@@ -82,7 +78,7 @@ else:
     if st.button("Accept Recommendations"):
         # Ensure feature_importances is defined here
         feature_importances = c.feature_importances
-        modified_data, new_version = c.process_hospital_data(selected_hospital_id, hospital_info, feature_importances, c.model, c.version_history, c.hospital_info)
+        modified_data, new_version = c.process_hospital_data(selected_hospital_id, hospital_info, feature_importances, c.model, c.version_history, desired_rating)
         st.session_state.modified_data = modified_data
         st.session_state.new_version = new_version
         st.success(f"Recommendations applied and new version {new_version} saved.")
