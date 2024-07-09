@@ -416,3 +416,4 @@ def init_memory():
         memory_key='chat_history',
         output_key='answer',  # Explicitly set the output key
         return_messages=True)
+
