@@ -1,4 +1,10 @@
 # %%
+import json
+import os
+import warnings
+from datetime import datetime
+
+import fitz
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
@@ -7,11 +13,18 @@ from sklearn.pipeline import make_pipeline
 from sklearn.linear_model import LogisticRegression
 from xgboost.testing.data import joblib
 from sklearn.pipeline import Pipeline
-import os
-from datetime import datetime
+from langchain_huggingface import HuggingFaceEndpoint, HuggingFaceEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain.prompts import PromptTemplate
+from langchain.memory import ConversationBufferMemory
+from langchain.chains import ConversationalRetrievalChain
+from langchain.document_loaders.base import BaseLoader
+from langchain.schema import Document
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 import streamlit as st
 
-# %%
+import pw
+
 # Import CSV files
 hospital_info = pd.read_csv('hospital-info.csv')
 not_yet_rated = pd.read_csv('not_yet_rated.csv')
@@ -38,7 +51,7 @@ id_data = hospital_info[['Hospital Name', 'Address']].copy()
 
 # %%
 # Keep only necessary columns for machine learning
-ml_data = hospital_info.drop(columns=columns_to_drop)
+ml_data = hospital_info.drop(columns=columns_to_drop).copy()
 
 # %%
 # Convert hospital ratings to binary classification
@@ -51,6 +64,9 @@ if binary_classification:
 # Separate predictors and target variable
 X = ml_data.drop(columns=['Hospital overall rating'])
 y = ml_data['Hospital overall rating']
+
+# Ensure 'Hospital overall rating' is still in hospital_info
+assert 'Hospital overall rating' in hospital_info.columns, "'Hospital overall rating' not found in hospital_info"
 
 # %%
 # Split the data into train and test sets (70-30 split)
@@ -93,7 +109,7 @@ svm_features = [
     'MED_OP_9_Score'
 ]
 
-# Feature dictionary 
+# Feature dictionary
 
 # Define a mapping dictionary for feature names
 feature_name_mapping = {
@@ -163,7 +179,6 @@ feature_name_mapping = {
 X_train_selected = X_train[svm_features]
 X_test_selected = X_test[svm_features]
 
-# %%
 save_new_model = False
 
 params = {
@@ -225,7 +240,11 @@ def load_data(data_path='not_yet_rated.csv'):
 
 
 # %%
+# Generating recommendations
 def generate_recommendations(hospital_id, hospital_info, feature_importances, desired_rating, top_n=5):
+    print(hospital_info.columns)
+    print(hospital_info.head())
+
     # Get the top N important features
     top_features = feature_importances.head(top_n)['Feature'].values
 
@@ -275,11 +294,12 @@ def apply_recommendations(hospital_id, not_yet_rated, recommendations):
         modified_data.loc[modified_data['Provider ID'] == hospital_id, feature] = details['recommended_value']
     return modified_data
 
+
 # %%
 # Hauptfunktion zur Verarbeitung der Krankenhausdaten und Speicherung der neuen Version
-def process_hospital_data(hospital_id, not_yet_rated, feature_importances, pipeline, version_history, hospital_info):
-    recommendations = generate_recommendations(hospital_id, not_yet_rated, feature_importances, hospital_info)
-    modified_data = apply_recommendations(hospital_id, not_yet_rated, recommendations)
+def process_hospital_data(hospital_id, hospital_info, feature_importances, pipeline, version_history, desired_rating):
+    recommendations = generate_recommendations(hospital_id, hospital_info, feature_importances, desired_rating)
+    modified_data = apply_recommendations(hospital_id, hospital_info, recommendations)
 
     new_version = version_history['Version'].max() + 1 if not version_history.empty else 1
     current_date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -296,7 +316,7 @@ def process_hospital_data(hospital_id, not_yet_rated, feature_importances, pipel
 
     return modified_data, new_version
 
-# %%
+
 # Initialisierung
 version_history = load_version_history()
 model = load_model()
@@ -308,3 +328,94 @@ feature_importances = pd.DataFrame({
     'Feature': svm_features,  # Verwende die Namen der ausgewählten Features
     'Importance': np.abs(model.named_steps['regressor'].coef_[0])
 }).sort_values(by='Importance', ascending=False)
+
+# Chatbot integration
+# Constants
+BOOK_DIR = './pdf'
+HF_MODEL = "mistralai/Mistral-7B-Instruct-v0.3"
+EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-l6-v2"
+EMBEDDINGS_CACHE = './CACHE'
+INDEX_DIR = "CACHE/faiss_index"
+HF_TOKEN = pw.hf_token
+
+# Suppress future warnings from the HuggingFace Hub
+warnings.filterwarnings("ignore", category=FutureWarning, module='huggingface_hub.file_download')
+
+# Set Hugging Face API token environment variable
+os.environ["HUGGINGFACEHUB_API_TOKEN"] = HF_TOKEN
+
+
+# Load the Hugging Face model and embeddings
+def initialize_llm(temperature):
+    return HuggingFaceEndpoint(repo_id=HF_MODEL, temperature=temperature)
+
+
+embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL, cache_folder=EMBEDDINGS_CACHE)
+
+
+# PDF Loader class
+class PDFLoader(BaseLoader):
+    def __init__(self, file_path):
+        self.file_path = file_path
+
+    def load(self):
+        documents = []
+        with fitz.open(self.file_path) as pdf_document:
+            for page_num in range(pdf_document.page_count):
+                page = pdf_document.load_page(page_num)
+                text = page.get_text("text")
+                documents.append(
+                    Document(page_content=text, metadata={"page_num": page_num, "filename": self.file_path}))
+        return documents
+
+
+# Load PDF files from a directory
+@st.cache_data
+def load_pdf_files(directory):
+    documents = []
+    for filename in os.listdir(directory):
+        if filename.endswith(".pdf"):
+            file_path = os.path.join(directory, filename)
+            loader = PDFLoader(file_path)
+            documents.extend(loader.load())
+            print(f"Loaded file: {filename}")
+    return documents
+
+
+# Check if the index meta file exists
+INDEX_META_FILE = os.path.join(INDEX_DIR, "index_meta.json")
+if os.path.exists(INDEX_META_FILE):
+    with open(INDEX_META_FILE, 'r') as f:
+        indexed_files = set(json.load(f))
+else:
+    indexed_files = set()
+
+# Check if the current files are already indexed
+current_files = set(os.listdir(BOOK_DIR))
+should_rebuild_index = current_files != indexed_files
+
+if should_rebuild_index:
+    documents = load_pdf_files(BOOK_DIR)
+    texts = [doc.page_content for doc in documents]
+    metadatas = [doc.metadata for doc in documents]
+
+    vector_db = FAISS.from_texts(texts, embeddings, metadatas=metadatas)
+
+    # Save the index
+    vector_db.save_local(INDEX_DIR)
+
+    # Update the index meta file
+    with open(INDEX_META_FILE, 'w') as f:
+        json.dump(list(current_files), f)
+else:
+    # Load the vector database
+    vector_db = FAISS.load_local(INDEX_DIR, embeddings, allow_dangerous_deserialization=True)
+
+
+# Memory
+@st.cache_resource
+def init_memory():
+    return ConversationBufferMemory(
+        memory_key='chat_history',
+        output_key='answer',  # Explicitly set the output key
+        return_messages=True)
