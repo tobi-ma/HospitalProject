@@ -1,6 +1,7 @@
 import streamlit as st
 import cleaned_code as c
 from streamlit_extras.app_logo import add_logo
+from langchain.chains.conversational_retrieval.base import ConversationalRetrievalChain
 
 # Logo Awesome Inc.
 st.image('img/Awesome_Inc (1).png', width=300)
@@ -9,7 +10,8 @@ st.image('img/Awesome_Inc (1).png', width=300)
 st.title("Hospital Recommendations")
 
 # Load necessary data
-hospital_info = c.hospital_info
+hospital_info = c.hospital_info.copy()
+print(hospital_info.columns)
 
 # State selection
 states = hospital_info['State'].unique()
@@ -43,7 +45,11 @@ hospital_data_view = hospital_info[hospital_info['Provider ID'] == selected_hosp
     'Patient experience national comparison', 'Effectiveness of care national comparison',
     'Timeliness of care national comparison', 'Efficient use of medical imaging national comparison'
 ]]
-st.write(hospital_data_view)
+st.dataframe(hospital_data_view.style.set_properties(**{
+    'background-color': 'white',
+    'color': 'black',
+    'border-color': 'black'
+}))
 
 # Ensure hospital_data contains the necessary features for prediction
 hospital_data = hospital_info[hospital_info['Provider ID'] == selected_hospital_id]
@@ -55,7 +61,7 @@ if missing_features:
 else:
     # Compute the current prediction for the selected hospital
     current_prediction = c.model.predict(hospital_data[c.svm_features])[0]
-    st.write(f"Current predicted rating for Hospital ID {selected_hospital_id}: {current_prediction}")
+    st.metric(label=f"Current predicted rating for Hospital ID {selected_hospital_id}", value=current_prediction)
 
     # Desired rating selection
     desired_rating = st.slider('Select Desired Rating', 1, 5, 4)
@@ -89,3 +95,86 @@ else:
             st.write(f"New predicted rating for Hospital ID {selected_hospital_id}: {new_prediction[0]}")
         else:
             st.write("No modified data available. Please accept recommendations first.")
+
+# Chatbot integration
+
+# Load the documents
+documents = c.load_pdf_files(c.BOOK_DIR)
+
+memory = c.init_memory()
+
+num_docs = 1
+temperature = 0.8
+length_instruction = "You can provide a detailed answer, but keep it concise."
+
+# Initialise chat history
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+# Display chat messages from history on app rerun
+for message in st.session_state.messages:
+    if message["role"] == "user":
+        st.chat_message(message["role"], avatar="🧑‍💻").write(message["content"])
+    else:
+        st.chat_message(message["role"], avatar="🤖").write(message["content"])
+
+# React to user input
+if prompt := st.chat_input("Enter your question:"):
+    # Display user message in chat message container
+    st.chat_message("user").markdown(prompt)
+
+    # Add user message to chat history
+    st.session_state.messages.append({"role": "user", "content": prompt})
+
+    # Begin spinner before answering question so it's there for the duration
+    with st.spinner("Retrieving answer..."):
+        # Initialize the model with the selected temperature
+        llm = c.initialize_llm(temperature)
+
+        # Prompt
+        template = f"""You are a nice chatbot having a conversation with a human. Answer the question based on the context and previous conversation, but feel free to provide additional information if needed. {length_instruction}
+
+        Previous conversation:
+        {{chat_history}}
+
+        Context to answer question:
+        {{context}}
+
+        New human question: {{question}}
+        Response:"""
+
+        prompt_template = c.PromptTemplate(template=template, input_variables=["context", "question"])
+
+        # Chain
+        chain = ConversationalRetrievalChain.from_llm(
+            llm,
+            retriever=c.vector_db.as_retriever(search_kwargs={"k": num_docs}),
+            memory=memory,
+            return_source_documents=True,
+            combine_docs_chain_kwargs={"prompt": prompt_template}
+        )
+
+        # Send question to chain to get answer
+        answer = chain({"question": prompt})
+
+        # Extract answer from dictionary returned by chain
+        response = answer["answer"]
+
+        # Display chatbot response in chat message container
+        with st.chat_message("assistant"):
+            st.markdown(response)
+            # Add a button to read the response aloud
+            if st.button("Read Aloud", key=f"read_aloud_{len(st.session_state.messages)}"):
+                c.subprocess.run(["say", response])
+
+        # Add assistant response to chat history
+        st.session_state.messages.append({"role": "assistant", "content": response})
+
+        # Display source documents in the sidebar with expander
+        with st.sidebar:
+            st.subheader("Context from Retrieved Documents")
+            with st.expander("Show/Hide Context", expanded=True):
+                for doc in answer['source_documents']:
+                    filename = doc.metadata.get("filename", "Unknown file")
+                    st.write(f"**Page {doc.metadata['page_num']} from {filename}:**")
+                    st.write(doc.page_content[:200] + "...")
