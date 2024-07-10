@@ -1,7 +1,41 @@
 import streamlit as st
 from langchain.chains.conversational_retrieval.base import ConversationalRetrievalChain
 import cleaned_code as c
-import pandas as pd
+import json
+import os
+from streamlit_extras.app_logo import add_logo
+
+# Directory containing PDF files
+pdf_dir = c.BOOK_DIR
+
+# Function to load and save file names
+def load_saved_filenames():
+    try:
+        with open('saved_filenames.json', 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return []
+
+def save_filenames(filenames):
+    with open('saved_filenames.json', 'w') as f:
+        json.dump(filenames, f)
+
+# Get the current list of PDF file names
+current_filenames = sorted([f for f in os.listdir(pdf_dir) if f.endswith('.pdf')])
+
+# Load saved file names
+saved_filenames = load_saved_filenames()
+
+# Check for changes in the PDF directory
+if current_filenames != saved_filenames:
+    # Save the current file names
+    save_filenames(current_filenames)
+
+    # Rebuild the index
+    c.build_index(pdf_dir, c.embeddings, c.INDEX_DIR)
+
+# Logo Awesome Inc.
+st.image('img/Awesome_Inc (1).png', width=600)
 
 # Centered and enlarged title
 st.markdown(
@@ -12,9 +46,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-
-# Logo Awesome Inc.
-st.image('img/Awesome_Inc (1).png', width=200)
 
 # Load necessary data
 hospital_info = c.hospital_info
@@ -60,15 +91,13 @@ st.markdown(
 hospital_data_view = hospital_info[hospital_info['Provider ID'] == selected_hospital_id][[
     'Provider ID', 'Hospital Name', 'Address', 'City', 'State', 'ZIP Code',
     'County Name', 'Phone Number', 'Hospital Ownership', 'Emergency Services',
-    'Hospital overall rating', 'Mortality national comparison',
-    'Safety of care national comparison', 'Readmission national comparison',
-    'Patient experience national comparison', 'Effectiveness of care national comparison',
-    'Timeliness of care national comparison', 'Efficient use of medical imaging national comparison'
+    'Hospital overall rating'
 ]]
 st.write(hospital_data_view)
 
 # Ensure hospital_data contains the necessary features for prediction
 hospital_data = hospital_info[hospital_info['Provider ID'] == selected_hospital_id]
+print(f"Original df: {hospital_data}")
 
 # Verify required features are present in the DataFrame
 missing_features = [feature for feature in c.svm_features if feature not in hospital_data.columns]
@@ -77,8 +106,6 @@ if missing_features:
 else:
     # Compute the current prediction for the selected hospital
     current_prediction = c.model.predict(hospital_data[c.svm_features])[0]
-
-    # Display current prediction
     st.markdown(
         f"""
         <div style='text-align: center;'>
@@ -88,73 +115,99 @@ else:
         unsafe_allow_html=True
     )
 
-    # Exclude the selected hospital from the data to calculate min values
-    other_hospitals = hospital_info[hospital_info['Provider ID'] != selected_hospital_id]
+    # Desired rating selection
+    desired_rating = st.slider('Select Desired Rating', 1, 5, 4)
 
-    # Calculate deviations from mean values
-    deviations_mean = hospital_data[c.svm_features] - c.mean_values
+    # Generate recommendations automatically when a hospital is selected
+    feature_importances = c.feature_importances
+    recommendations = c.generate_recommendations(selected_hospital_id, hospital_info, feature_importances, desired_rating)
+    st.session_state.recommendations = recommendations
+    st.session_state.feature_importances = feature_importances
 
-    # Calculate deviations from minimum values excluding the selected hospital
-    min_values_excluding_selected = other_hospitals[c.svm_features].min()
-    deviations_min = hospital_data[c.svm_features] - min_values_excluding_selected
-
-    # Calculate deviations below minimum values
-    deviations_below_min = deviations_min[deviations_min < 0].dropna(axis=1)
-
-    # Get the top 10 and bottom 10 deviations from mean
-    deviations_mean_sorted = deviations_mean.T.sort_values(by=0)
-    top_10_mean = deviations_mean_sorted.head(10)
-    bottom_10_mean = deviations_mean_sorted.tail(10)
-
-    # Create a checkbox for each feature below minimum value
-    selected_features = list(deviations_below_min.columns)
-
-    # If no features below minimum, show top 10 and bottom 10 mean deviations
-    if deviations_below_min.empty:
-        st.markdown("### Features Below Minimum Values")
-        selected_features += list(deviations_below_min.columns)
-
-    st.markdown("### Top 10 and Bottom 10 Deviations from Mean Values")
-    selected_features += list(top_10_mean.index) + list(bottom_10_mean.index)
-
-    # Remove duplicates from selected_features
-    selected_features = list(set(selected_features))
-
-    # Generate recommendations based on selected features
-    recommendations = c.generate_recommendations(
-        selected_hospital_id, hospital_info, c.feature_importances, current_prediction
-    )
-
-    if recommendations:
-        st.markdown("### Recommendations")
-        for feature, details in recommendations.items():
-            st.write(f"**{feature}**: Increase from {details['current_value']} to {details['recommended_value']} (Difference: {details['difference']:.2f})")
-
-    # Multiselect for the selected features
-    selected_features = st.multiselect(
-        "Select features to improve:",
-        options=c.svm_features,
-        default=recommendations.items(feature)
-    )
-
-    # Button to accept recommendations
-    if st.button("Accept Recommendations"):
-        feature_importances = c.feature_importances
-        modified_data, new_version = c.process_hospital_data(
-            selected_hospital_id, hospital_info, feature_importances, c.model, c.version_history, selected_features
+    if st.session_state.recommendations:
+        st.markdown(
+            f"""
+            <div style='text-align: center;'>
+                <h3>Recommendations for {selected_hospital_name} (Hospital ID {selected_hospital_id})</h3>
+            </div>
+            """,
+            unsafe_allow_html=True
         )
-        st.session_state.modified_data = modified_data
-        st.session_state.new_version = new_version
-        st.success(f"Recommendations applied and new version {new_version} saved.")
 
-    # Optional: Calculate the new prediction for the modified hospital
-    if st.button("Calculate New Prediction"):
-        if 'modified_data' in st.session_state:
-            modified_data = st.session_state.modified_data
-            new_prediction = c.model.predict(
-                modified_data[modified_data['Provider ID'] == selected_hospital_id][c.svm_features]
+        recommendations = st.session_state.recommendations
+        slider_values = {}
+        for feature, details in recommendations.items():
+            current_value = round(details['current_value'], 2)
+            change = round(details['difference'], 2)
+            new_value = round(details['recommended_value'], 2)
+            max_value = round(current_value + 2 * change, 2)
+            mid_value = round(current_value + change, 2)
+
+            if feature not in st.session_state:
+                st.session_state[feature] = mid_value
+
+            col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
+            col1.markdown(f"<div style='font-size: 20px;'>{feature}</div>", unsafe_allow_html=True)
+            col2.markdown(f"<div style='text-align: center; font-size: 20px; color: red;'>{current_value}</div>", unsafe_allow_html=True)
+            col3.markdown(f"<div style='text-align: center; font-size: 20px;'>{change}</div>", unsafe_allow_html=True)
+            col4.markdown(f"<div style='text-align: center; font-size: 20px; color: green;'>{new_value}</div>", unsafe_allow_html=True)
+
+            slider_values[feature] = st.slider(
+                feature,
+                min_value=current_value,
+                max_value=max_value,
+                value=st.session_state[feature],
+                step=0.01,
+                key=f"slider_{feature}"
             )
-            st.write(f"New predicted rating for Hospital ID {selected_hospital_id}: {new_prediction[0]}")
+            st.session_state[feature] = slider_values[feature]
+
+        # Umkehren des Dictionaries
+        translated_to_original = {v: k for k, v in c.feature_name_mapping.items()}
+
+        # Apply recommendations directly to the data
+        new_data = hospital_data.copy()
+        for feature, value in slider_values.items():
+            # Übersetzen des Features zurück zum originalen Spaltennamen
+            original_feature = translated_to_original.get(feature, feature)
+            new_data.at[new_data.index[0], original_feature] = value
+
+        st.session_state.new_data = new_data
+
+        st.write("New data with recommendations applied:")
+        st.write(new_data)  # Debugging output
+
+        st.success("New values applied. You can now calculate the new prediction.")
+
+    if st.button('Calculate New Prediction'):
+        if 'new_data' in st.session_state:
+            new_data = st.session_state.new_data.copy()
+            # Drop the 'Hospital overall rating' column for prediction
+            if 'Hospital overall rating' in new_data.columns:
+                new_data1 = new_data.drop(columns=['Hospital overall rating'])
+                new_data1 = new_data1.drop(columns=c.columns_to_drop)
+            else:
+                new_data1 = new_data.drop(columns=c.columns_to_drop)
+
+            st.write("Data used for prediction:")
+            st.write(new_data1[c.svm_features])  # Debugging output
+
+            # Compute the new prediction for the modified hospital
+            new_prediction = c.model.predict(new_data1[c.svm_features])[0]
+            # Append the new prediction as 'Hospital overall rating'
+            st.session_state.new_data['Hospital overall rating'] = new_prediction
+
+            st.write("New data after prediction:")
+            st.write(st.session_state.new_data)  # Debugging output
+
+            st.markdown(
+                f"""
+                <div style='text-align: center;'>
+                    <h4>New Rating: <span style='color: red;'>{new_prediction}</span></h4>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
         else:
             st.write("No modified data available. Please accept recommendations first.")
 
